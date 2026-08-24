@@ -1,7 +1,6 @@
 # Order Management System
 
-Sistema para gerenciamento de produtos, estoque e pedidos, desenvolvido como teste técnico para uma posição de Desenvolvedor Fullstack Pleno.
-
+Sistema para gerenciamento de produtos, estoque e pedidos
 O projeto foi construído com foco em regras de negócio no backend, consistência transacional, controle de concorrência, idempotência, tratamento padronizado de erros, testes automatizados e uma interface simples para operação.
 
 ---

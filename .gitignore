@@ -1,0 +1,24 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# .NET
+**/bin/
+**/obj/
+
+# Frontend
+**/node_modules/
+**/.next/
+
+# Variáveis de ambiente
+.env
+.env.local
+.env.*.local
+
+# Testes
+TestResults/
+coverage/
+
+# Logs
+*.log

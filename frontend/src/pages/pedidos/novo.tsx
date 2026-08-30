@@ -1,669 +1,1103 @@
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/router";
+import {
+    FormEvent,
+    useEffect,
+    useState
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
+import {
+    ArrowLeft,
+    Minus,
+    PackageOpen,
+    Plus,
+    Search,
+    ShoppingCart,
+    Trash2
+} from "lucide-react";
 import { ApiError } from "@/services/api";
+import {
+    listarProdutos,
+    obterProdutoPorId
+} from "@/services/produtosService";
 import { criarPedido } from "@/services/pedidosService";
-import { listarProdutos } from "@/services/produtosService";
-import { Produto, StatusProduto } from "@/types/produto";
-import { ItemCriarPedidoRequest } from "@/types/pedido";
+import {
+    Produto,
+    StatusProduto
+} from "@/types/produto";
+import PageHeader from "@/components/ui/PageHeader";
 
-interface ItemTela {
-  produto: Produto;
-  quantidade: number;
+interface ItemPedidoLocal {
+    produto: Produto;
+    quantidade: number;
 }
 
-const CHAVE_ITENS_PEDIDO =
-  "order-management:novo-pedido:itens";
+interface ItemPedidoSalvo {
+    produtoId: number;
+    quantidade: number;
+}
 
-const CHAVE_IDEMPOTENCIA =
-  "order-management:novo-pedido:idempotencia";
+const STORAGE_ITENS =
+    "order-management-novo-pedido-itens";
+
+const STORAGE_IDEMPOTENCIA =
+    "order-management-novo-pedido-idempotencia";
 
 export default function NovoPedidoPage() {
-  const router = useRouter();
+    const router = useRouter();
 
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [itens, setItens] = useState<ItemTela[]>([]);
+    const [produtos, setProdutos] =
+        useState<Produto[]>([]);
 
-  const [produtoSelecionado, setProdutoSelecionado] = useState("");
-  const [quantidade, setQuantidade] = useState("1");
+    const [itens, setItens] =
+        useState<ItemPedidoLocal[]>([]);
 
-  const [carregandoProdutos, setCarregandoProdutos] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState("");
+    const [busca, setBusca] =
+        useState("");
 
-  const [chaveIdempotencia, setChaveIdempotencia] =
-    useState("");
+    const [buscaAplicada, setBuscaAplicada] =
+        useState("");
 
-  const [rascunhoCarregado, setRascunhoCarregado] =
-    useState(false);
+    const [carregandoProdutos, setCarregandoProdutos] =
+        useState(true);
 
-  const [buscaProduto, setBuscaProduto] =
-    useState("");
+    const [criandoPedido, setCriandoPedido] =
+        useState(false);
 
-  const [filtroProduto, setFiltroProduto] =
-    useState("");
+    const [restaurando, setRestaurando] =
+        useState(true);
 
-  useEffect(() => {
-    async function carregarProdutos() {
-      try {
-        setCarregandoProdutos(true);
-        setErro("");
+    const [erro, setErro] =
+        useState("");
 
-        const resultado = await listarProdutos({
-          pagina: 1,
-          tamanhoPagina: 50,
-          nome: filtroProduto || undefined,
-          status: StatusProduto.Ativo,
-          ordenarPor: "nome",
-          direcao: "asc"
-        });
+    const [chaveIdempotencia, setChaveIdempotencia] =
+        useState<string | null>(null);
 
-        setProdutos(resultado.itens);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          setErro(error.message);
-        } else {
-          setErro(
-            "Não foi possível carregar os produtos."
-          );
+        useEffect(() => {
+    let cancelado = false;
+
+    async function executarRestauracao() {
+        /*
+         * Garante que as alterações de estado
+         * ocorram de forma assíncrona ao effect.
+         */
+        await Promise.resolve();
+
+        try {
+            const chaveSalva =
+                sessionStorage.getItem(
+                    STORAGE_IDEMPOTENCIA
+                );
+
+            if (
+                chaveSalva &&
+                !cancelado
+            ) {
+                setChaveIdempotencia(
+                    chaveSalva
+                );
+            }
+
+            const itensSalvos =
+                sessionStorage.getItem(
+                    STORAGE_ITENS
+                );
+
+            if (!itensSalvos) {
+                return;
+            }
+
+            const dados =
+                JSON.parse(
+                    itensSalvos
+                ) as ItemPedidoSalvo[];
+
+            if (
+                !Array.isArray(dados) ||
+                dados.length === 0
+            ) {
+                return;
+            }
+
+            const itensRestaurados:
+                ItemPedidoLocal[] = [];
+
+            for (
+                const itemSalvo of dados
+            ) {
+                if (cancelado) {
+                    return;
+                }
+
+                try {
+                    const produto =
+                        await obterProdutoPorId(
+                            itemSalvo.produtoId
+                        );
+
+                    if (
+                        produto.status !==
+                        StatusProduto.Ativo
+                    ) {
+                        continue;
+                    }
+
+                    if (
+                        produto.quantidadeEstoque <= 0
+                    ) {
+                        continue;
+                    }
+
+                    const quantidade =
+                        Math.min(
+                            itemSalvo.quantidade,
+                            produto.quantidadeEstoque
+                        );
+
+                    if (
+                        quantidade <= 0
+                    ) {
+                        continue;
+                    }
+
+                    itensRestaurados.push({
+                        produto,
+                        quantidade
+                    });
+                } catch {
+                    /*
+                     * O produto pode não existir mais
+                     * ou estar indisponível.
+                     */
+                }
+            }
+
+            if (!cancelado) {
+                setItens(
+                    itensRestaurados
+                );
+            }
+        } catch {
+            sessionStorage.removeItem(
+                STORAGE_ITENS
+            );
+
+            sessionStorage.removeItem(
+                STORAGE_IDEMPOTENCIA
+            );
+        } finally {
+            if (!cancelado) {
+                setRestaurando(false);
+            }
         }
-      } finally {
-        setCarregandoProdutos(false);
-      }
     }
 
-    carregarProdutos();
-}, [filtroProduto]);
+    void executarRestauracao();
 
-  useEffect(() => {
-    const itensSalvos =
-      sessionStorage.getItem(
-        CHAVE_ITENS_PEDIDO
-      );
+    return () => {
+        cancelado = true;
+    };
+}, []);
 
-    const chaveSalva =
-      sessionStorage.getItem(
-        CHAVE_IDEMPOTENCIA
-      );
+    useEffect(() => {
+        let cancelado = false;
 
-    if (itensSalvos) {
-      try {
-        const itensRascunho =
-          JSON.parse(itensSalvos) as ItemTela[];
+        listarProdutos({
+            pagina: 1,
+            tamanhoPagina: 50,
+            nome:
+                buscaAplicada ||
+                undefined,
+            status:
+                StatusProduto.Ativo,
+            ordenarPor: "nome",
+            direcao: "asc"
+        })
+            .then((resultado) => {
+                if (cancelado) {
+                    return;
+                }
 
-        setItens(itensRascunho);
-      } catch {
-        sessionStorage.removeItem(
-          CHAVE_ITENS_PEDIDO
-        );
-      }
-    }
+                setProdutos(
+                    resultado.itens
+                );
 
-    if (chaveSalva) {
-      setChaveIdempotencia(
-        chaveSalva
-      );
-    }
+                setErro("");
+            })
+            .catch((error) => {
+                if (cancelado) {
+                    return;
+                }
 
-    setRascunhoCarregado(true);
-  }, []);
+                if (error instanceof ApiError) {
+                    setErro(
+                        error.message
+                    );
+                } else {
+                    setErro(
+                        "Não foi possível carregar os produtos."
+                    );
+                }
+            })
+            .finally(() => {
+                if (!cancelado) {
+                    setCarregandoProdutos(
+                        false
+                    );
+                }
+            });
 
-  useEffect(() => {
-    if (!rascunhoCarregado) {
-      return;
-    }
+        return () => {
+            cancelado = true;
+        };
+    }, [
+        buscaAplicada
+    ]);
 
-    if (itens.length === 0) {
-      sessionStorage.removeItem(
-        CHAVE_ITENS_PEDIDO
-      );
+    useEffect(() => {
+        if (restaurando) {
+            return;
+        }
 
-      return;
-    }
+        const itensSalvar:
+            ItemPedidoSalvo[] =
+            itens.map((item) => ({
+                produtoId:
+                    item.produto.id,
 
-    sessionStorage.setItem(
-      CHAVE_ITENS_PEDIDO,
-      JSON.stringify(itens)
-    );
-  }, [
-    itens,
-    rascunhoCarregado
-  ]);
-
-  const valorProdutos = useMemo(() => {
-    return itens.reduce(
-      (total, item) =>
-        total +
-        item.produto.preco *
-          item.quantidade,
-      0
-    );
-  }, [itens]);
-
-  const quantidadeTotal = useMemo(() => {
-    return itens.reduce(
-      (total, item) =>
-        total + item.quantidade,
-      0
-    );
-  }, [itens]);
-
-  const desconto = useMemo(() => {
-    if (quantidadeTotal > 10) {
-      return valorProdutos * 0.10;
-    }
-
-    if (quantidadeTotal > 5) {
-      return valorProdutos * 0.05;
-    }
-
-    return 0;
-  }, [
-    quantidadeTotal,
-    valorProdutos
-  ]);
-
-  const valorTotal =
-    valorProdutos - desconto;
-
-  function invalidarChaveIdempotencia() {
-    setChaveIdempotencia("");
-
-    sessionStorage.removeItem(
-      CHAVE_IDEMPOTENCIA
-    );
-  }
-
-  function pesquisarProduto() {
-  setFiltroProduto(
-    buscaProduto.trim()
-  );
-
-  setProdutoSelecionado("");
-}
-
-function limparBuscaProduto() {
-  setBuscaProduto("");
-  setFiltroProduto("");
-  setProdutoSelecionado("");
-}
-  function adicionarItem() {
-    setErro("");
-
-    const produtoId =
-      Number(produtoSelecionado);
-
-    const quantidadeNumero =
-      Number(quantidade);
-
-    const produto =
-      produtos.find(
-        (item) =>
-          item.id === produtoId
-      );
-
-    if (!produto) {
-      setErro(
-        "Selecione um produto."
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isInteger(quantidadeNumero) ||
-      quantidadeNumero <= 0
-    ) {
-      setErro(
-        "Informe uma quantidade válida."
-      );
-
-      return;
-    }
-
-    const itemExistente =
-      itens.find(
-        (item) =>
-          item.produto.id === produto.id
-      );
-
-    const quantidadeAtual =
-      itemExistente?.quantidade ?? 0;
-
-    const novaQuantidade =
-      quantidadeAtual +
-      quantidadeNumero;
-
-    if (
-      novaQuantidade >
-      produto.quantidadeEstoque
-    ) {
-      setErro(
-        `A quantidade informada ultrapassa o estoque disponível de ${produto.quantidadeEstoque}.`
-      );
-
-      return;
-    }
-
-    if (itemExistente) {
-      setItens(
-        itens.map((item) =>
-          item.produto.id === produto.id
-            ? {
-                ...item,
                 quantidade:
-                  novaQuantidade
-              }
-            : item
-        )
-      );
-    } else {
-      setItens([
-        ...itens,
-        {
-          produto,
-          quantidade:
-            quantidadeNumero
-        }
-      ]);
-    }
-
-    invalidarChaveIdempotencia();
-
-    setProdutoSelecionado("");
-    setQuantidade("1");
-  }
-
-  function removerItem(
-    produtoId: number
-  ) {
-    setItens(
-      itens.filter(
-        (item) =>
-          item.produto.id !== produtoId
-      )
-    );
-
-    invalidarChaveIdempotencia();
-  }
-
-  async function salvarPedido() {
-    if (itens.length === 0) {
-      setErro(
-        "Adicione pelo menos um item ao pedido."
-      );
-
-      return;
-    }
-
-    try {
-      setSalvando(true);
-      setErro("");
-
-      const itensRequest:
-        ItemCriarPedidoRequest[] =
-        itens.map((item) => ({
-          produtoId: item.produto.id,
-          quantidade: item.quantidade
-        }));
-
-      let chave =
-        chaveIdempotencia ||
-        sessionStorage.getItem(
-          CHAVE_IDEMPOTENCIA
-        ) ||
-        "";
-
-      if (!chave) {
-        chave =
-          crypto.randomUUID();
-
-        setChaveIdempotencia(
-          chave
-        );
+                    item.quantidade
+            }));
 
         sessionStorage.setItem(
-          CHAVE_IDEMPOTENCIA,
-          chave
+            STORAGE_ITENS,
+            JSON.stringify(
+                itensSalvar
+            )
         );
-      }
+    }, [
+        itens,
+        restaurando
+    ]);
 
-      const pedido =
-        await criarPedido(
-          {
-            itens: itensRequest
-          },
-          chave
-        );
 
-      sessionStorage.removeItem(
-        CHAVE_ITENS_PEDIDO
-      );
+    function pesquisar(
+        event: FormEvent
+    ) {
+        event.preventDefault();
 
-      sessionStorage.removeItem(
-        CHAVE_IDEMPOTENCIA
-      );
+        const novaBusca =
+            busca.trim();
 
-      setChaveIdempotencia("");
-
-      await router.push(
-        `/pedidos/${pedido.id}`
-      );
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setErro(error.message);
-      } else {
-        setErro(
-          "Não foi possível criar o pedido."
-        );
-      }
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  function formatarMoeda(
-    valor: number
-  ) {
-    return valor.toLocaleString(
-      "pt-BR",
-      {
-        style: "currency",
-        currency: "BRL"
-      }
-    );
-  }
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>Novo Pedido</h1>
-
-          <p>
-            Selecione os produtos e informe
-            as quantidades.
-          </p>
-        </div>
-
-        <Link
-          href="/pedidos"
-          className="button-secondary"
-        >
-          Voltar
-        </Link>
-      </div>
-
-      {erro && (
-        <div className="alert-error">
-          {erro}
-        </div>
-      )}
-
-      <div className="form-card">
-      <div className="product-search">
-  <div className="form-group">
-    <label htmlFor="buscaProduto">
-      Buscar produto
-    </label>
-
-    <input
-      id="buscaProduto"
-      type="text"
-      value={buscaProduto}
-      onChange={(event) =>
-        setBuscaProduto(
-          event.target.value
-        )
-      }
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-
-          pesquisarProduto();
+        if (
+            novaBusca === buscaAplicada
+        ) {
+            return;
         }
-      }}
-      placeholder="Digite o nome do produto"
-      disabled={salvando}
-    />
-  </div>
 
-  <button
-    type="button"
-    className="button-secondary"
-    onClick={pesquisarProduto}
-    disabled={
-      carregandoProdutos ||
-      salvando
+        setCarregandoProdutos(
+            true
+        );
+
+        setBuscaAplicada(
+            novaBusca
+        );
     }
-  >
-    Buscar
-  </button>
 
-  {filtroProduto && (
-    <button
-      type="button"
-      className="button-secondary"
-      onClick={limparBuscaProduto}
-      disabled={salvando}
-    >
-      Limpar Busca
-    </button>
-  )}
-</div>
-        <div className="form-row">
-          <div className="form-group">
-            <label htmlFor="produto">
-              Produto
-            </label>
+    function invalidarIdempotencia() {
+        setChaveIdempotencia(
+            null
+        );
 
-            <select
-              id="produto"
-              value={produtoSelecionado}
-              onChange={(event) =>
-                setProdutoSelecionado(
-                  event.target.value
-                )
-              }
-              disabled={
-                carregandoProdutos ||
-                salvando
-              }
-            >
+        sessionStorage.removeItem(
+            STORAGE_IDEMPOTENCIA
+        );
+    }
 
-            <option value="">
-              {carregandoProdutos
-                ? "Carregando produtos..."
-                : produtos.length === 0
-                  ? "Nenhum produto encontrado"
-                  : "Selecione"}
-            </option>
+    function adicionarProduto(
+        produto: Produto
+    ) {
+        setErro("");
 
-              {produtos.map(
-                (produto) => (
-                  <option
-                    key={produto.id}
-                    value={produto.id}
-                  >
-                    {produto.nome}
-                    {" - "}
-                    {formatarMoeda(
-                      produto.preco
-                    )}
-                    {" - estoque "}
-                    {
-                      produto.quantidadeEstoque
-                    }
-                  </option>
-                )
-              )}
-            </select>
-          </div>
+        if (
+            produto.quantidadeEstoque <= 0
+        ) {
+            setErro(
+                `O produto ${produto.nome} não possui estoque disponível.`
+            );
 
-          <div className="form-group">
-            <label htmlFor="quantidade">
-              Quantidade
-            </label>
+            return;
+        }
 
-            <input
-              id="quantidade"
-              type="number"
-              min="1"
-              step="1"
-              value={quantidade}
-              onChange={(event) =>
-                setQuantidade(
-                  event.target.value
-                )
-              }
-              disabled={salvando}
-            />
-          </div>
-        </div>
+        const itemExistente =
+            itens.find(
+                (item) =>
+                    item.produto.id ===
+                    produto.id
+            );
 
-        <div className="form-actions">
-          <button
-            type="button"
-            className="button-primary"
-            onClick={adicionarItem}
-            disabled={
-              carregandoProdutos ||
-              salvando
+        if (itemExistente) {
+            if (
+                itemExistente.quantidade >=
+                produto.quantidadeEstoque
+            ) {
+                setErro(
+                    `A quantidade de ${produto.nome} não pode ultrapassar o estoque disponível.`
+                );
+
+                return;
             }
-          >
-            Adicionar Produto
-          </button>
-        </div>
-      </div>
 
-      <h2>Itens do Pedido</h2>
+            invalidarIdempotencia();
 
-      {itens.length === 0 ? (
-        <p>
-          Nenhum item adicionado.
-        </p>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Produto</th>
-              <th>Quantidade</th>
-              <th>Preço unitário</th>
-              <th>Total</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
+            setItens(
+                itens.map((item) =>
+                    item.produto.id ===
+                        produto.id
+                        ? {
+                            ...item,
+                            quantidade:
+                                item.quantidade + 1
+                        }
+                        : item
+                )
+            );
 
-          <tbody>
-            {itens.map((item) => (
-              <tr
-                key={
-                  item.produto.id
-                }
-              >
-                <td>
-                  {
-                    item.produto.nome
-                  }
-                </td>
+            return;
+        }
 
-                <td>
-                  {item.quantidade}
-                </td>
+        invalidarIdempotencia();
 
-                <td>
-                  {formatarMoeda(
-                    item.produto.preco
-                  )}
-                </td>
+        setItens([
+            ...itens,
+            {
+                produto,
+                quantidade: 1
+            }
+        ]);
+    }
 
-                <td>
-                  {formatarMoeda(
-                    item.produto.preco *
-                      item.quantidade
-                  )}
-                </td>
+    function alterarQuantidade(
+        produtoId: number,
+        quantidade: number
+    ) {
+        const item =
+            itens.find(
+                (itemAtual) =>
+                    itemAtual.produto.id ===
+                    produtoId
+            );
 
-                <td>
-                  <button
-                    type="button"
-                    className="button-danger"
-                    onClick={() =>
-                      removerItem(
-                        item.produto.id
-                      )
+        if (!item) {
+            return;
+        }
+
+        if (quantidade <= 0) {
+            removerItem(
+                produtoId
+            );
+
+            return;
+        }
+
+        if (
+            quantidade >
+            item.produto.quantidadeEstoque
+        ) {
+            setErro(
+                `A quantidade de ${item.produto.nome} não pode ultrapassar o estoque disponível.`
+            );
+
+            return;
+        }
+
+        setErro("");
+
+        invalidarIdempotencia();
+
+        setItens(
+            itens.map((itemAtual) =>
+                itemAtual.produto.id ===
+                    produtoId
+                    ? {
+                        ...itemAtual,
+                        quantidade
                     }
-                    disabled={salvando}
-                  >
-                    Remover
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                    : itemAtual
+            )
+        );
+    }
 
-      <div className="totals-card">
-        <div>
-          <span>
-            Valor dos produtos
-          </span>
+    function removerItem(
+        produtoId: number
+    ) {
+        invalidarIdempotencia();
 
-          <strong>
-            {formatarMoeda(
-              valorProdutos
-            )}
-          </strong>
-        </div>
+        setItens(
+            itens.filter(
+                (item) =>
+                    item.produto.id !==
+                    produtoId
+            )
+        );
+    }
 
-        <div>
-          <span>
-            Desconto estimado
-          </span>
-
-          <strong>
-            {formatarMoeda(
-              desconto
-            )}
-          </strong>
-        </div>
-
-        <div className="total-final">
-          <span>
-            Total estimado
-          </span>
-
-          <strong>
-            {formatarMoeda(
-              valorTotal
-            )}
-          </strong>
-        </div>
-      </div>
-
-      <div className="form-actions">
-        <Link
-          href="/pedidos"
-          className="button-secondary"
-        >
-          Cancelar
-        </Link>
-
-        <button
-          type="button"
-          className="button-primary"
-          disabled={
-            salvando ||
+    async function finalizarPedido() {
+        if (
             itens.length === 0
-          }
-          onClick={salvarPedido}
-        >
-          {salvando
-            ? "Criando Pedido..."
-            : "Criar Pedido"}
-        </button>
-      </div>
-    </>
-  );
+        ) {
+            setErro(
+                "Adicione pelo menos um produto ao pedido."
+            );
+
+            return;
+        }
+
+        try {
+            setCriandoPedido(true);
+            setErro("");
+
+            let chave =
+                chaveIdempotencia;
+
+            if (!chave) {
+                chave =
+                    crypto.randomUUID();
+
+                setChaveIdempotencia(
+                    chave
+                );
+
+                sessionStorage.setItem(
+                    STORAGE_IDEMPOTENCIA,
+                    chave
+                );
+            }
+
+            const pedido =
+                await criarPedido(
+                    {
+                        itens:
+                            itens.map((item) => ({
+                                produtoId:
+                                    item.produto.id,
+
+                                quantidade:
+                                    item.quantidade
+                            }))
+                    },
+                    chave
+                );
+
+            sessionStorage.removeItem(
+                STORAGE_ITENS
+            );
+
+            sessionStorage.removeItem(
+                STORAGE_IDEMPOTENCIA
+            );
+
+            await router.push(
+                `/pedidos/${pedido.id}`
+            );
+        } catch (error) {
+            if (error instanceof ApiError) {
+                setErro(
+                    error.message
+                );
+            } else {
+                setErro(
+                    "Não foi possível criar o pedido. Você pode tentar novamente sem alterar os itens."
+                );
+            }
+        } finally {
+            setCriandoPedido(false);
+        }
+    }
+
+    function formatarMoeda(
+        valor: number
+    ) {
+        return valor.toLocaleString(
+            "pt-BR",
+            {
+                style: "currency",
+                currency: "BRL"
+            }
+        );
+    }
+
+    const quantidadeTotal =
+        itens.reduce(
+            (
+                total,
+                item
+            ) =>
+                total +
+                item.quantidade,
+            0
+        );
+
+    const subtotal =
+        itens.reduce(
+            (
+                total,
+                item
+            ) =>
+                total +
+                item.produto.preco *
+                item.quantidade,
+            0
+        );
+
+    const percentualDesconto =
+        quantidadeTotal > 10
+            ? 0.1
+            : quantidadeTotal > 5
+                ? 0.05
+                : 0;
+
+    const desconto =
+        subtotal *
+        percentualDesconto;
+
+    const total =
+        subtotal -
+        desconto;
+
+    if (restaurando) {
+        return (
+            <div className="page-loading">
+                <div className="spinner" />
+
+                <span>
+                    Recuperando pedido...
+                </span>
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <PageHeader
+                title="Novo pedido"
+                description="Selecione os produtos e revise os valores antes de confirmar."
+                actions={
+                    <Link
+                        href="/pedidos"
+                        className="button-secondary"
+                    >
+                        <ArrowLeft size={16} />
+
+                        Voltar
+                    </Link>
+                }
+            />
+
+            {erro && (
+                <div className="alert-error">
+                    {erro}
+                </div>
+            )}
+
+            <div className="new-order-layout">
+                <div className="new-order-main">
+                    <section className="form-section-card">
+                        <div className="form-section-header">
+                            <div>
+                                <h2>
+                                    Adicionar produtos
+                                </h2>
+
+                                <p>
+                                    Pesquise produtos ativos e
+                                    disponíveis em estoque.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="product-selector">
+                            <form
+                                className="order-product-search"
+                                onSubmit={pesquisar}
+                            >
+                                <div className="input-with-icon">
+                                    <Search
+                                        size={17}
+                                        className="input-icon"
+                                    />
+
+                                    <input
+                                        type="text"
+                                        value={busca}
+                                        onChange={(event) =>
+                                            setBusca(
+                                                event.target.value
+                                            )
+                                        }
+                                        placeholder="Buscar produto por nome..."
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    className="button-primary"
+                                    disabled={
+                                        carregandoProdutos
+                                    }
+                                >
+                                    <Search size={16} />
+
+                                    Buscar
+                                </button>
+                            </form>
+
+                            {carregandoProdutos ? (
+                                <div className="product-selector-loading">
+                                    <div className="spinner" />
+
+                                    <span>
+                                        Buscando produtos...
+                                    </span>
+                                </div>
+                            ) : produtos.length === 0 ? (
+                                <div className="product-selector-empty">
+                                    <PackageOpen
+                                        size={24}
+                                    />
+
+                                    <strong>
+                                        Nenhum produto encontrado
+                                    </strong>
+
+                                    <span>
+                                        Tente pesquisar por outro nome.
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="product-selection-list">
+                                    {produtos.map(
+                                        (produto) => {
+                                            const item =
+                                                itens.find(
+                                                    (
+                                                        itemAtual
+                                                    ) =>
+                                                        itemAtual
+                                                            .produto
+                                                            .id ===
+                                                        produto.id
+                                                );
+
+                                            const indisponivel =
+                                                produto.quantidadeEstoque <=
+                                                0;
+
+                                            return (
+                                                <div
+                                                    key={
+                                                        produto.id
+                                                    }
+                                                    className="product-selection-item"
+                                                >
+                                                    <div className="product-selection-info">
+                                                        <div className="product-avatar product-avatar-large">
+                                                            {produto.nome
+                                                                .charAt(0)
+                                                                .toUpperCase()}
+                                                        </div>
+
+                                                        <div className="product-selection-text">
+                                                            <strong>
+                                                                {produto.nome}
+                                                            </strong>
+
+                                                            {produto.descricao && (
+                                                                <span>
+                                                                    {
+                                                                        produto.descricao
+                                                                    }
+                                                                </span>
+                                                            )}
+
+                                                            <div className="product-selection-meta">
+                                                                <span className="product-selection-price">
+                                                                    {formatarMoeda(
+                                                                        produto.preco
+                                                                    )}
+                                                                </span>
+
+                                                                <span>
+                                                                    {
+                                                                        produto.quantidadeEstoque
+                                                                    }
+                                                                    {" "}
+                                                                    em estoque
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        className={
+                                                            item
+                                                                ? "button-secondary product-add-button selected"
+                                                                : "button-secondary product-add-button"
+                                                        }
+                                                        disabled={
+                                                            indisponivel
+                                                        }
+                                                        onClick={() =>
+                                                            adicionarProduto(
+                                                                produto
+                                                            )
+                                                        }
+                                                    >
+                                                        <Plus
+                                                            size={15}
+                                                        />
+
+                                                        {item
+                                                            ? `Adicionar (${item.quantidade})`
+                                                            : "Adicionar"}
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+
+                    <section className="form-section-card">
+                        <div className="form-section-header">
+                            <div className="form-section-icon">
+                                <ShoppingCart
+                                    size={19}
+                                />
+                            </div>
+
+                            <div>
+                                <h2>
+                                    Itens do pedido
+                                </h2>
+
+                                <p>
+                                    Ajuste as quantidades antes
+                                    de confirmar.
+                                </p>
+                            </div>
+                        </div>
+
+                        {itens.length === 0 ? (
+                            <div className="order-cart-empty">
+                                <ShoppingCart
+                                    size={27}
+                                />
+
+                                <strong>
+                                    Seu pedido está vazio
+                                </strong>
+
+                                <span>
+                                    Adicione produtos utilizando
+                                    a lista acima.
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="order-cart-list">
+                                {itens.map(
+                                    (item) => (
+                                        <div
+                                            key={
+                                                item.produto.id
+                                            }
+                                            className="order-cart-item"
+                                        >
+                                            <div className="order-cart-product">
+                                                <div className="product-avatar">
+                                                    {item.produto.nome
+                                                        .charAt(0)
+                                                        .toUpperCase()}
+                                                </div>
+
+                                                <div>
+                                                    <strong>
+                                                        {
+                                                            item.produto.nome
+                                                        }
+                                                    </strong>
+
+                                                    <span>
+                                                        {formatarMoeda(
+                                                            item.produto.preco
+                                                        )}
+                                                        {" por unidade"}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="quantity-control">
+                                                <button
+                                                    type="button"
+                                                    aria-label="Diminuir quantidade"
+                                                    disabled={
+                                                        criandoPedido
+                                                    }
+                                                    onClick={() =>
+                                                        alterarQuantidade(
+                                                            item.produto.id,
+                                                            item.quantidade -
+                                                            1
+                                                        )
+                                                    }
+                                                >
+                                                    <Minus
+                                                        size={14}
+                                                    />
+                                                </button>
+
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max={
+                                                        item.produto
+                                                            .quantidadeEstoque
+                                                    }
+                                                    value={
+                                                        item.quantidade
+                                                    }
+                                                    disabled={
+                                                        criandoPedido
+                                                    }
+                                                    onChange={(
+                                                        event
+                                                    ) =>
+                                                        alterarQuantidade(
+                                                            item.produto.id,
+                                                            Number(
+                                                                event.target
+                                                                    .value
+                                                            )
+                                                        )
+                                                    }
+                                                />
+
+                                                <button
+                                                    type="button"
+                                                    aria-label="Aumentar quantidade"
+                                                    disabled={
+                                                        criandoPedido ||
+                                                        item.quantidade >=
+                                                        item.produto
+                                                            .quantidadeEstoque
+                                                    }
+                                                    onClick={() =>
+                                                        alterarQuantidade(
+                                                            item.produto.id,
+                                                            item.quantidade +
+                                                            1
+                                                        )
+                                                    }
+                                                >
+                                                    <Plus
+                                                        size={14}
+                                                    />
+                                                </button>
+                                            </div>
+
+                                            <div className="order-cart-stock">
+                                                <span>
+                                                    Estoque
+                                                </span>
+
+                                                <strong>
+                                                    {
+                                                        item.produto
+                                                            .quantidadeEstoque
+                                                    }
+                                                </strong>
+                                            </div>
+
+                                            <div className="order-cart-total">
+                                                <span>
+                                                    Total
+                                                </span>
+
+                                                <strong>
+                                                    {formatarMoeda(
+                                                        item.produto.preco *
+                                                        item.quantidade
+                                                    )}
+                                                </strong>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                className="order-cart-remove"
+                                                disabled={
+                                                    criandoPedido
+                                                }
+                                                aria-label={`Remover ${item.produto.nome}`}
+                                                onClick={() =>
+                                                    removerItem(
+                                                        item.produto.id
+                                                    )
+                                                }
+                                            >
+                                                <Trash2
+                                                    size={16}
+                                                />
+                                            </button>
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        )}
+                    </section>
+                </div>
+
+                <aside className="new-order-sidebar">
+                    <div className="checkout-card">
+                        <div className="checkout-header">
+                            <h2>
+                                Resumo do pedido
+                            </h2>
+
+                            <p>
+                                Revise os valores antes
+                                de confirmar.
+                            </p>
+                        </div>
+
+                        <div className="checkout-body">
+                            <div className="checkout-items-count">
+                                <ShoppingCart
+                                    size={17}
+                                />
+
+                                <div>
+                                    <strong>
+                                        {quantidadeTotal}
+                                        {" "}
+                                        {quantidadeTotal === 1
+                                            ? "unidade"
+                                            : "unidades"}
+                                    </strong>
+
+                                    <span>
+                                        {itens.length}
+                                        {" "}
+                                        {itens.length === 1
+                                            ? "produto"
+                                            : "produtos"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="checkout-divider" />
+
+                            <div className="checkout-row">
+                                <span>
+                                    Subtotal
+                                </span>
+
+                                <strong>
+                                    {formatarMoeda(
+                                        subtotal
+                                    )}
+                                </strong>
+                            </div>
+
+                            <div className="checkout-row">
+                                <span>
+                                    Desconto
+                                </span>
+
+                                {desconto > 0 ? (
+                                    <strong className="checkout-discount">
+                                        -
+                                        {formatarMoeda(
+                                            desconto
+                                        )}
+                                    </strong>
+                                ) : (
+                                    <strong>
+                                        {formatarMoeda(
+                                            0
+                                        )}
+                                    </strong>
+                                )}
+                            </div>
+
+                            {percentualDesconto >
+                                0 && (
+                                    <div className="discount-applied">
+                                        Desconto de{" "}
+                                        <strong>
+                                            {percentualDesconto *
+                                                100}
+                                            %
+                                        </strong>{" "}
+                                        aplicado pela quantidade
+                                        de itens.
+                                    </div>
+                                )}
+
+                            <div className="checkout-divider" />
+
+                            <div className="checkout-total">
+                                <span>
+                                    Total estimado
+                                </span>
+
+                                <strong>
+                                    {formatarMoeda(
+                                        total
+                                    )}
+                                </strong>
+                            </div>
+
+                            <div className="checkout-warning">
+                                Os valores exibidos são uma
+                                estimativa. Preços, estoque,
+                                desconto e total serão
+                                validados e calculados
+                                novamente pelo backend no
+                                momento da criação.
+                            </div>
+
+                            <button
+                                type="button"
+                                className="button-primary checkout-submit"
+                                disabled={
+                                    criandoPedido ||
+                                    itens.length === 0
+                                }
+                                onClick={
+                                    finalizarPedido
+                                }
+                            >
+                                <ShoppingCart
+                                    size={17}
+                                />
+
+                                {criandoPedido
+                                    ? "Criando pedido..."
+                                    : "Criar pedido"}
+                            </button>
+
+                            <Link
+                                href="/pedidos"
+                                className="button-secondary checkout-cancel"
+                            >
+                                Cancelar
+                            </Link>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </>
+    );
 }

@@ -1,280 +1,508 @@
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import {
+    FormEvent,
+    useEffect,
+    useState
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
+import {
+    ArrowLeft,
+    Boxes,
+    PackageCheck,
+    Save
+} from "lucide-react";
 import { ApiError } from "@/services/api";
 import {
-  atualizarProduto,
-  obterProdutoPorId
+    atualizarProduto,
+    obterProdutoPorId
 } from "@/services/produtosService";
-import { StatusProduto } from "@/types/produto";
+import {
+    Produto,
+    StatusProduto
+} from "@/types/produto";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default function EditarProdutoPage() {
-  const router = useRouter();
+    const router = useRouter();
 
-  const { id } = router.query;
+    const { id } = router.query;
 
-  const [nome, setNome] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [preco, setPreco] = useState("");
-  const [status, setStatus] = useState<StatusProduto>(
-    StatusProduto.Ativo
-  );
+    const [produto, setProduto] =
+        useState<Produto | null>(null);
 
-  const [estoque, setEstoque] = useState(0);
+    const [nome, setNome] =
+        useState("");
 
-  const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState("");
+    const [descricao, setDescricao] =
+        useState("");
 
-  useEffect(() => {
-    if (!router.isReady) {
-      return;
-    }
+    const [preco, setPreco] =
+        useState("");
 
-    const produtoId = Number(id);
+    const [status, setStatus] =
+        useState<StatusProduto>(
+            StatusProduto.Ativo
+        );
 
-    if (!Number.isInteger(produtoId) ||
-        produtoId <= 0) {
-      setErro("Produto inválido.");
-      setCarregando(false);
+    const [carregando, setCarregando] =
+        useState(true);
 
-      return;
-    }
+    const [salvando, setSalvando] =
+        useState(false);
 
-    async function carregarProduto() {
-      try {
-        setCarregando(true);
+    const [erro, setErro] =
+        useState("");
+
+    useEffect(() => {
+        if (!router.isReady) {
+            return;
+        }
+
+        const produtoId = Number(id);
+
+        if (
+            !Number.isInteger(produtoId) ||
+            produtoId <= 0
+        ) {
+            return;
+        }
+
+        let cancelado = false;
+
+        obterProdutoPorId(produtoId)
+            .then((resultado) => {
+                if (cancelado) {
+                    return;
+                }
+
+                setProduto(resultado);
+                setNome(resultado.nome);
+                setDescricao(resultado.descricao ?? "");
+                setPreco(resultado.preco.toString());
+                setStatus(resultado.status);
+                setErro("");
+            })
+            .catch((error) => {
+                if (cancelado) {
+                    return;
+                }
+
+                if (error instanceof ApiError) {
+                    setErro(error.message);
+                } else {
+                    setErro(
+                        "Não foi possível carregar o produto."
+                    );
+                }
+            })
+            .finally(() => {
+                if (!cancelado) {
+                    setCarregando(false);
+                }
+            });
+
+        return () => {
+            cancelado = true;
+        };
+    }, [
+        router.isReady,
+        id
+    ]);
+
+
+    async function salvarProduto(
+        event: FormEvent
+    ) {
+        event.preventDefault();
+
+        if (!produto) {
+            return;
+        }
+
         setErro("");
 
-        const produto =
-          await obterProdutoPorId(produtoId);
+        const precoNumero =
+            Number(preco);
 
-        setNome(produto.nome);
-        setDescricao(produto.descricao);
-        setPreco(produto.preco.toString());
-        setEstoque(produto.quantidadeEstoque);
-        setStatus(produto.status);
-      } catch (error) {
-        if (error instanceof ApiError) {
-          setErro(error.message);
-        } else {
-          setErro(
-            "Não foi possível carregar o produto."
-          );
+        if (!nome.trim()) {
+            setErro(
+                "Informe o nome do produto."
+            );
+
+            return;
         }
-      } finally {
-        setCarregando(false);
-      }
-    }
 
-    carregarProduto();
-  }, [router.isReady, id]);
+        if (
+            !Number.isFinite(precoNumero) ||
+            precoNumero <= 0
+        ) {
+            setErro(
+                "Informe um preço válido."
+            );
 
-  async function salvar(event: FormEvent) {
-    event.preventDefault();
-
-    setErro("");
-
-    const produtoId = Number(id);
-
-    const precoNumero = Number(
-      preco.replace(",", ".")
-    );
-
-    if (!nome.trim()) {
-      setErro("Informe o nome do produto.");
-
-      return;
-    }
-
-    if (
-      !Number.isFinite(precoNumero) ||
-      precoNumero <= 0
-    ) {
-      setErro(
-        "Informe um preço válido maior que zero."
-      );
-
-      return;
-    }
-
-    try {
-      setSalvando(true);
-
-      await atualizarProduto(
-        produtoId,
-        {
-          nome: nome.trim(),
-          descricao: descricao.trim(),
-          preco: precoNumero,
-          status
+            return;
         }
-      );
 
-      await router.push("/produtos");
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setErro(error.message);
-      } else {
-        setErro(
-          "Não foi possível atualizar o produto."
+        try {
+            setSalvando(true);
+
+            await atualizarProduto(
+                produto.id,
+                {
+                    nome:
+                        nome.trim(),
+
+                    descricao:
+                        descricao.trim(),
+
+                    preco:
+                        precoNumero,
+
+                    status
+                }
+            );
+
+            await router.push(
+                "/produtos"
+            );
+        } catch (error) {
+            if (error instanceof ApiError) {
+                setErro(
+                    error.message
+                );
+            } else {
+                setErro(
+                    "Não foi possível atualizar o produto."
+                );
+            }
+        } finally {
+            setSalvando(false);
+        }
+    }
+
+ 
+
+    if (carregando) {
+        return (
+            <div className="page-loading">
+                <div className="spinner" />
+
+                <span>
+                    Carregando produto...
+                </span>
+            </div>
         );
-      }
-    } finally {
-      setSalvando(false);
     }
-  }
 
-  if (carregando) {
+    if (erro && !produto) {
+        return (
+            <>
+                <div className="alert-error">
+                    {erro}
+                </div>
+
+                <Link
+                    href="/produtos"
+                    className="button-secondary"
+                >
+                    <ArrowLeft size={16} />
+
+                    Voltar
+                </Link>
+            </>
+        );
+    }
+
+    if (!produto) {
+        return null;
+    }
+
     return (
-      <p>
-        Carregando produto...
-      </p>
+        <>
+            <PageHeader
+                title="Editar produto"
+                description={`Produto #${produto.id}`}
+                actions={
+                    <Link
+                        href="/produtos"
+                        className="button-secondary"
+                    >
+                        <ArrowLeft size={16} />
+
+                        Voltar
+                    </Link>
+                }
+            />
+
+            {erro && (
+                <div className="alert-error">
+                    {erro}
+                </div>
+            )}
+
+          
+
+            <form
+                onSubmit={salvarProduto}
+                className="entity-form"
+            >
+                <section className="form-section-card">
+                    <div className="form-section-header">
+                        <div className="form-section-icon">
+                            <PackageCheck size={19} />
+                        </div>
+
+                        <div>
+                            <h2>
+                                Informações básicas
+                            </h2>
+
+                            <p>
+                                Atualize os dados principais
+                                do produto.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="form-section-body">
+                        <div className="form-grid">
+                            <div className="form-group form-group-full">
+                                <label htmlFor="nome">
+                                    Nome
+
+                                    <span className="required-mark">
+                                        *
+                                    </span>
+                                </label>
+
+                                <input
+                                    id="nome"
+                                    type="text"
+                                    maxLength={200}
+                                    value={nome}
+                                    onChange={(event) =>
+                                        setNome(
+                                            event.target.value
+                                        )
+                                    }
+                                    disabled={salvando}
+                                />
+
+                                <small>
+                                    Nome utilizado para identificar
+                                    o produto no catálogo.
+                                </small>
+                            </div>
+
+                            <div className="form-group form-group-full">
+                                <label htmlFor="descricao">
+                                    Descrição
+                                </label>
+
+                                <textarea
+                                    id="descricao"
+                                    maxLength={1000}
+                                    rows={4}
+                                    value={descricao}
+                                    onChange={(event) =>
+                                        setDescricao(
+                                            event.target.value
+                                        )
+                                    }
+                                    disabled={salvando}
+                                />
+
+                                <div className="field-footer">
+                                    <small>
+                                        Opcional
+                                    </small>
+
+                                    <small>
+                                        {descricao.length}/1000
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="form-section-card">
+                    <div className="form-section-header">
+                        <div>
+                            <h2>
+                                Comercial e disponibilidade
+                            </h2>
+
+                            <p>
+                                Gerencie o preço e a disponibilidade
+                                do produto para novos pedidos.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="form-section-body">
+                        <div className="form-grid form-grid-two">
+                            <div className="form-group">
+                                <label htmlFor="preco">
+                                    Preço
+
+                                    <span className="required-mark">
+                                        *
+                                    </span>
+                                </label>
+
+                                <div className="money-input">
+                                    <span>
+                                        R$
+                                    </span>
+
+                                    <input
+                                        id="preco"
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        value={preco}
+                                        onChange={(event) =>
+                                            setPreco(
+                                                event.target.value
+                                            )
+                                        }
+                                        disabled={salvando}
+                                    />
+                                </div>
+
+                                <small>
+                                    Pedidos antigos mantêm
+                                    o preço original.
+                                </small>
+                            </div>
+
+                            <div className="form-group">
+                                <label htmlFor="status">
+                                    Status
+
+                                    <span className="required-mark">
+                                        *
+                                    </span>
+                                </label>
+
+                                <select
+                                    id="status"
+                                    value={status}
+                                    onChange={(event) =>
+                                        setStatus(
+                                            Number(
+                                                event.target.value
+                                            ) as StatusProduto
+                                        )
+                                    }
+                                    disabled={salvando}
+                                >
+                                    <option
+                                        value={
+                                            StatusProduto.Ativo
+                                        }
+                                    >
+                                        Ativo
+                                    </option>
+
+                                    <option
+                                        value={
+                                            StatusProduto.Inativo
+                                        }
+                                    >
+                                        Inativo
+                                    </option>
+                                </select>
+
+                                <small>
+                                    Produtos inativos não podem
+                                    ser incluídos em novos pedidos.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="form-section-card">
+                    <div className="form-section-header">
+                        <div className="form-section-icon">
+                            <Boxes size={19} />
+                        </div>
+
+                        <div>
+                            <h2>
+                                Estoque
+                            </h2>
+
+                            <p>
+                                Consulte a quantidade atualmente
+                                disponível.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="form-section-body">
+                        <div className="stock-readonly-card">
+                            <div>
+                                <span>
+                                    Quantidade disponível
+                                </span>
+
+                                <strong>
+                                    {
+                                        produto.quantidadeEstoque
+                                    }
+                                </strong>
+
+                                <small>
+                                    {produto.quantidadeEstoque === 1
+                                        ? "unidade em estoque"
+                                        : "unidades em estoque"}
+                                </small>
+                            </div>
+
+                            <div className="stock-readonly-info">
+                                O estoque não pode ser alterado
+                                diretamente nesta tela. As
+                                movimentações são controladas
+                                pelo fluxo de pedidos.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className="form-submit-bar">
+                    <div className="form-submit-info">
+                        <span>
+                            Campos com
+                            <strong> *</strong>
+                            {" "}são obrigatórios.
+                        </span>
+                    </div>
+
+                    <div className="form-submit-actions">
+                        <Link
+                            href="/produtos"
+                            className="button-secondary"
+                        >
+                            Cancelar
+                        </Link>
+
+                        <button
+                            type="submit"
+                            className="button-primary"
+                            disabled={salvando}
+                        >
+                            <Save size={16} />
+
+                            {salvando
+                                ? "Salvando..."
+                                : "Salvar alterações"}
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </>
     );
-  }
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>Editar Produto</h1>
-
-          <p>
-            Atualize os dados e o status do produto.
-          </p>
-        </div>
-
-        <Link
-          href="/produtos"
-          className="button-secondary"
-        >
-          Voltar
-        </Link>
-      </div>
-
-      <form
-        onSubmit={salvar}
-        className="form-card"
-      >
-        {erro && (
-          <div className="alert-error">
-            {erro}
-          </div>
-        )}
-
-        <div className="form-group">
-          <label htmlFor="nome">
-            Nome
-          </label>
-
-          <input
-            id="nome"
-            type="text"
-            maxLength={200}
-            value={nome}
-            onChange={(event) =>
-              setNome(event.target.value)
-            }
-            disabled={salvando}
-            required
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="descricao">
-            Descrição
-          </label>
-
-          <textarea
-            id="descricao"
-            maxLength={1000}
-            rows={5}
-            value={descricao}
-            onChange={(event) =>
-              setDescricao(event.target.value)
-            }
-            disabled={salvando}
-          />
-        </div>
-
-        <div className="form-row">
-          <div className="form-group">
-            <label htmlFor="preco">
-              Preço
-            </label>
-
-            <input
-              id="preco"
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={preco}
-              onChange={(event) =>
-                setPreco(event.target.value)
-              }
-              disabled={salvando}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="estoque">
-              Estoque atual
-            </label>
-
-            <input
-              id="estoque"
-              type="number"
-              value={estoque}
-              disabled
-            />
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="status">
-            Status
-          </label>
-
-          <select
-            id="status"
-            value={status}
-            onChange={(event) =>
-              setStatus(
-                Number(event.target.value) as StatusProduto
-              )
-            }
-            disabled={salvando}
-          >
-            <option value={StatusProduto.Ativo}>
-              Ativo
-            </option>
-
-            <option value={StatusProduto.Inativo}>
-              Inativo
-            </option>
-          </select>
-        </div>
-
-        <div className="form-actions">
-          <Link
-            href="/produtos"
-            className="button-secondary"
-          >
-            Cancelar
-          </Link>
-
-          <button
-            type="submit"
-            className="button-primary"
-            disabled={salvando}
-          >
-            {salvando
-              ? "Salvando..."
-              : "Salvar Alterações"}
-          </button>
-        </div>
-      </form>
-    </>
-  );
 }

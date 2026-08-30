@@ -1,398 +1,663 @@
-import { FormEvent, useEffect, useState } from "react";
+import {
+    FormEvent,
+    useEffect,
+    useState
+} from "react";
 import Link from "next/link";
+import {
+    ChevronLeft,
+    ChevronRight,
+    Eye,
+    Plus,
+    Search,
+    ShoppingBag,
+    X
+} from "lucide-react";
 import { ApiError } from "@/services/api";
 import { listarPedidos } from "@/services/pedidosService";
 import {
-  PedidoResumo,
-  StatusPedido
+    PedidoResumo,
+    StatusPedido
 } from "@/types/pedido";
+import Badge from "@/components/ui/Badge";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default function PedidosPage() {
-  const [pedidos, setPedidos] = useState<PedidoResumo[]>([]);
+    const [pedidos, setPedidos] =
+        useState<PedidoResumo[]>([]);
 
-  const [status, setStatus] = useState<
-    StatusPedido | undefined
-  >();
+    const [pagina, setPagina] =
+        useState(1);
 
-  const [dataInicial, setDataInicial] = useState("");
-  const [dataFinal, setDataFinal] = useState("");
+    const [totalPaginas, setTotalPaginas] =
+        useState(0);
 
-  const [valorMinimo, setValorMinimo] = useState("");
-  const [valorMaximo, setValorMaximo] = useState("");
+    const [totalItens, setTotalItens] =
+        useState(0);
 
-  const [filtroDataInicial, setFiltroDataInicial] = useState("");
-  const [filtroDataFinal, setFiltroDataFinal] = useState("");
-  const [filtroValorMinimo, setFiltroValorMinimo] = useState("");
-  const [filtroValorMaximo, setFiltroValorMaximo] = useState("");
+    const [status, setStatus] =
+        useState<StatusPedido | undefined>();
 
-  const [pagina, setPagina] = useState(1);
-  const [totalPaginas, setTotalPaginas] = useState(0);
-  const [totalItens, setTotalItens] = useState(0);
+    const [dataInicial, setDataInicial] =
+        useState("");
 
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
+    const [dataFinal, setDataFinal] =
+        useState("");
 
-  async function carregarPedidos() {
-    try {
-      setCarregando(true);
-      setErro("");
+    const [valorMinimo, setValorMinimo] =
+        useState("");
 
-      const resultado = await listarPedidos({
+    const [valorMaximo, setValorMaximo] =
+        useState("");
+
+    const [filtroDataInicial, setFiltroDataInicial] =
+        useState("");
+
+    const [filtroDataFinal, setFiltroDataFinal] =
+        useState("");
+
+    const [filtroValorMinimo, setFiltroValorMinimo] =
+        useState("");
+
+    const [filtroValorMaximo, setFiltroValorMaximo] =
+        useState("");
+
+    const [carregando, setCarregando] =
+        useState(true);
+
+    const [erro, setErro] =
+        useState("");
+
+    useEffect(() => {
+        carregarPedidos();
+    }, [
         pagina,
-        tamanhoPagina: 50,
         status,
-        dataInicial: filtroDataInicial || undefined,
-        dataFinal: filtroDataFinal || undefined,
-        valorMinimo: filtroValorMinimo
-          ? Number(filtroValorMinimo)
-          : undefined,
-        valorMaximo: filtroValorMaximo
-          ? Number(filtroValorMaximo)
-          : undefined
-      });
+        filtroDataInicial,
+        filtroDataFinal,
+        filtroValorMinimo,
+        filtroValorMaximo
+    ]);
 
-      setPedidos(resultado.itens);
-      setTotalPaginas(resultado.totalPaginas);
-      setTotalItens(resultado.totalItens);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setErro(error.message);
-      } else {
-        setErro(
-          "Não foi possível carregar os pedidos."
+    async function carregarPedidos() {
+        try {
+            setCarregando(true);
+            setErro("");
+
+            const resultado =
+                await listarPedidos({
+                    pagina,
+                    tamanhoPagina: 50,
+                    status,
+                    dataInicial:
+                        filtroDataInicial ||
+                        undefined,
+                    dataFinal:
+                        filtroDataFinal ||
+                        undefined,
+                    valorMinimo:
+                        filtroValorMinimo
+                            ? Number(
+                                filtroValorMinimo
+                            )
+                            : undefined,
+                    valorMaximo:
+                        filtroValorMaximo
+                            ? Number(
+                                filtroValorMaximo
+                            )
+                            : undefined
+                });
+
+            setPedidos(
+                resultado.itens
+            );
+
+            setTotalPaginas(
+                resultado.totalPaginas
+            );
+
+            setTotalItens(
+                resultado.totalItens
+            );
+        } catch (error) {
+            if (error instanceof ApiError) {
+                setErro(
+                    error.message
+                );
+            } else {
+                setErro(
+                    "Não foi possível carregar os pedidos."
+                );
+            }
+        } finally {
+            setCarregando(false);
+        }
+    }
+
+    function pesquisar(
+        event: FormEvent
+    ) {
+        event.preventDefault();
+
+        setPagina(1);
+
+        setFiltroDataInicial(
+            dataInicial
         );
-      }
-    } finally {
-      setCarregando(false);
+
+        setFiltroDataFinal(
+            dataFinal
+        );
+
+        setFiltroValorMinimo(
+            valorMinimo
+        );
+
+        setFiltroValorMaximo(
+            valorMaximo
+        );
     }
-  }
 
-  useEffect(() => {
-    carregarPedidos();
-  }, [
-    pagina,
-    status,
-    filtroDataInicial,
-    filtroDataFinal,
-    filtroValorMinimo,
-    filtroValorMaximo
-  ]);
+    function alterarStatus(
+        valor: string
+    ) {
+        setPagina(1);
 
-  function pesquisar(event: FormEvent) {
-    event.preventDefault();
+        if (!valor) {
+            setStatus(
+                undefined
+            );
 
-    setPagina(1);
-    setFiltroDataInicial(dataInicial);
-    setFiltroDataFinal(dataFinal);
-    setFiltroValorMinimo(valorMinimo);
-    setFiltroValorMaximo(valorMaximo);
-  }
+            return;
+        }
 
-  function limparFiltros() {
-    setStatus(undefined);
-
-    setDataInicial("");
-    setDataFinal("");
-
-    setValorMinimo("");
-    setValorMaximo("");
-
-    setFiltroDataInicial("");
-    setFiltroDataFinal("");
-    setFiltroValorMinimo("");
-    setFiltroValorMaximo("");
-
-    setPagina(1);
-  }
-
-  function descricaoStatus(
-    statusPedido: StatusPedido
-  ) {
-    switch (statusPedido) {
-      case StatusPedido.Pendente:
-        return "Pendente";
-
-      case StatusPedido.Processando:
-        return "Processando";
-
-      case StatusPedido.Concluido:
-        return "Concluído";
-
-      case StatusPedido.Cancelado:
-        return "Cancelado";
-
-      default:
-        return "Desconhecido";
-    }
-  }
-
-  return (
-    <>
-      <h1>Pedidos</h1>
-
-      <div className="page-actions">
-        <Link
-          href="/pedidos/novo"
-          className="button-primary"
-        >
-          Novo Pedido
-        </Link>
-      </div>
-
-      <form
-        onSubmit={pesquisar}
-        className="filters"
-      >
-        <div className="form-group">
-          <label htmlFor="status">
-            Status
-          </label>
-
-          <select
-            id="status"
-            value={status ?? ""}
-            onChange={(event) => {
-              const valor = event.target.value;
-
-              setStatus(
+        setStatus(
+            Number(
                 valor
-                  ? Number(valor) as StatusPedido
-                  : undefined
-              );
+            ) as StatusPedido
+        );
+    }
 
-              setPagina(1);
-            }}
-          >
-            <option value="">
-              Todos
-            </option>
+    function limparFiltros() {
+        setStatus(
+            undefined
+        );
 
-            <option value={StatusPedido.Pendente}>
-              Pendente
-            </option>
+        setDataInicial("");
+        setDataFinal("");
+        setValorMinimo("");
+        setValorMaximo("");
 
-            <option value={StatusPedido.Processando}>
-              Processando
-            </option>
+        setFiltroDataInicial("");
+        setFiltroDataFinal("");
+        setFiltroValorMinimo("");
+        setFiltroValorMaximo("");
 
-            <option value={StatusPedido.Concluido}>
-              Concluído
-            </option>
+        setPagina(1);
+    }
 
-            <option value={StatusPedido.Cancelado}>
-              Cancelado
-            </option>
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="dataInicial">
-            Data inicial
-          </label>
-
-          <input
-            id="dataInicial"
-            type="date"
-            value={dataInicial}
-            onChange={(event) =>
-              setDataInicial(event.target.value)
+    function formatarMoeda(
+        valor: number
+    ) {
+        return valor.toLocaleString(
+            "pt-BR",
+            {
+                style: "currency",
+                currency: "BRL"
             }
-          />
-        </div>
+        );
+    }
 
-        <div className="form-group">
-          <label htmlFor="dataFinal">
-            Data final
-          </label>
+    function formatarData(
+        data: string
+    ) {
+        return new Date(
+            data
+        ).toLocaleString(
+            "pt-BR"
+        );
+    }
 
-          <input
-            id="dataFinal"
-            type="date"
-            value={dataFinal}
-            onChange={(event) =>
-              setDataFinal(event.target.value)
-            }
-          />
-        </div>
+    function statusPedido(
+        statusPedido: StatusPedido
+    ) {
+        switch (
+        statusPedido
+        ) {
+            case StatusPedido.Pendente:
+                return (
+                    <Badge variant="warning">
+                        Pendente
+                    </Badge>
+                );
 
-        <div className="form-group">
-          <label htmlFor="valorMinimo">
-            Valor mínimo
-          </label>
+            case StatusPedido.Processando:
+                return (
+                    <Badge variant="info">
+                        Processando
+                    </Badge>
+                );
 
-          <input
-            id="valorMinimo"
-            type="number"
-            min="0"
-            step="0.01"
-            value={valorMinimo}
-            onChange={(event) =>
-              setValorMinimo(event.target.value)
-            }
-          />
-        </div>
+            case StatusPedido.Concluido:
+                return (
+                    <Badge variant="success">
+                        Concluído
+                    </Badge>
+                );
 
-        <div className="form-group">
-          <label htmlFor="valorMaximo">
-            Valor máximo
-          </label>
+            case StatusPedido.Cancelado:
+                return (
+                    <Badge variant="danger">
+                        Cancelado
+                    </Badge>
+                );
 
-          <input
-            id="valorMaximo"
-            type="number"
-            min="0"
-            step="0.01"
-            value={valorMaximo}
-            onChange={(event) =>
-              setValorMaximo(event.target.value)
-            }
-          />
-        </div>
+            default:
+                return (
+                    <Badge variant="neutral">
+                        Desconhecido
+                    </Badge>
+                );
+        }
+    }
 
-        <button type="submit">
-          Pesquisar
-        </button>
+    const possuiFiltros =
+        status !== undefined ||
+        dataInicial ||
+        dataFinal ||
+        valorMinimo ||
+        valorMaximo;
 
-        <button
-          type="button"
-          onClick={limparFiltros}
-        >
-          Limpar
-        </button>
-      </form>
-
-      <p>
-        Total de pedidos: {totalItens}
-      </p>
-
-      {carregando && (
-        <p>
-          Carregando pedidos...
-        </p>
-      )}
-
-      {erro && (
-        <div className="alert-error">
-          {erro}
-        </div>
-      )}
-
-      {!carregando &&
-        !erro &&
-        pedidos.length === 0 && (
-          <p>
-            Nenhum pedido encontrado.
-          </p>
-        )}
-
-      {!carregando &&
-        !erro &&
-        pedidos.length > 0 && (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Data</th>
-                <th>Status</th>
-                <th>Produtos</th>
-                <th>Desconto</th>
-                <th>Total</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {pedidos.map((pedido) => (
-                <tr key={pedido.id}>
-                  <td>
-                    {pedido.id}
-                  </td>
-
-                  <td>
-                    {new Date(
-                      pedido.dataCriacao
-                    ).toLocaleString("pt-BR")}
-                  </td>
-
-                  <td>
-                    {descricaoStatus(
-                      pedido.status
-                    )}
-                  </td>
-
-                  <td>
-                    {pedido.valorProdutos.toLocaleString(
-                      "pt-BR",
-                      {
-                        style: "currency",
-                        currency: "BRL"
-                      }
-                    )}
-                  </td>
-
-                  <td>
-                    {pedido.desconto.toLocaleString(
-                      "pt-BR",
-                      {
-                        style: "currency",
-                        currency: "BRL"
-                      }
-                    )}
-                  </td>
-
-                  <td>
-                    {pedido.valorTotal.toLocaleString(
-                      "pt-BR",
-                      {
-                        style: "currency",
-                        currency: "BRL"
-                      }
-                    )}
-                  </td>
-
-                  <td>
+    return (
+        <>
+            <PageHeader
+                title="Pedidos"
+                description="Acompanhe os pedidos, valores e etapas do processamento."
+                actions={
                     <Link
-                      href={`/pedidos/${pedido.id}`}
-                      className="table-link"
+                        href="/pedidos/novo"
+                        className="button-primary"
                     >
-                      Detalhes
+                        <Plus size={16} />
+
+                        Novo pedido
                     </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                }
+            />
 
-      {!carregando &&
-        !erro &&
-        totalPaginas > 0 && (
-          <div className="pagination">
-            <button
-              type="button"
-              disabled={pagina <= 1}
-              onClick={() =>
-                setPagina((atual) => atual - 1)
-              }
-            >
-              Anterior
-            </button>
+            {erro && (
+                <div className="alert-error">
+                    {erro}
+                </div>
+            )}
 
-            <span>
-              Página {pagina} de {totalPaginas}
-            </span>
+            <div className="filters-card">
+                <form
+                    className="orders-filters"
+                    onSubmit={pesquisar}
+                >
+                    <div className="filter-field">
+                        <label htmlFor="status">
+                            Status
+                        </label>
 
-            <button
-              type="button"
-              disabled={pagina >= totalPaginas}
-              onClick={() =>
-                setPagina((atual) => atual + 1)
-              }
-            >
-              Próxima
-            </button>
-          </div>
-        )}
-    </>
-  );
+                        <select
+                            id="status"
+                            value={status ?? ""}
+                            onChange={(event) =>
+                                alterarStatus(
+                                    event.target.value
+                                )
+                            }
+                        >
+                            <option value="">
+                                Todos
+                            </option>
+
+                            <option
+                                value={
+                                    StatusPedido.Pendente
+                                }
+                            >
+                                Pendente
+                            </option>
+
+                            <option
+                                value={
+                                    StatusPedido.Processando
+                                }
+                            >
+                                Processando
+                            </option>
+
+                            <option
+                                value={
+                                    StatusPedido.Concluido
+                                }
+                            >
+                                Concluído
+                            </option>
+
+                            <option
+                                value={
+                                    StatusPedido.Cancelado
+                                }
+                            >
+                                Cancelado
+                            </option>
+                        </select>
+                    </div>
+
+                    <div className="filter-field">
+                        <label htmlFor="dataInicial">
+                            Data inicial
+                        </label>
+
+                        <input
+                            id="dataInicial"
+                            type="date"
+                            value={dataInicial}
+                            onChange={(event) =>
+                                setDataInicial(
+                                    event.target.value
+                                )
+                            }
+                        />
+                    </div>
+
+                    <div className="filter-field">
+                        <label htmlFor="dataFinal">
+                            Data final
+                        </label>
+
+                        <input
+                            id="dataFinal"
+                            type="date"
+                            value={dataFinal}
+                            onChange={(event) =>
+                                setDataFinal(
+                                    event.target.value
+                                )
+                            }
+                        />
+                    </div>
+
+                    <div className="filter-field">
+                        <label htmlFor="valorMinimo">
+                            Valor mínimo
+                        </label>
+
+                        <div className="money-filter">
+                            <span>
+                                R$
+                            </span>
+
+                            <input
+                                id="valorMinimo"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={valorMinimo}
+                                onChange={(event) =>
+                                    setValorMinimo(
+                                        event.target.value
+                                    )
+                                }
+                                placeholder="0,00"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="filter-field">
+                        <label htmlFor="valorMaximo">
+                            Valor máximo
+                        </label>
+
+                        <div className="money-filter">
+                            <span>
+                                R$
+                            </span>
+
+                            <input
+                                id="valorMaximo"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={valorMaximo}
+                                onChange={(event) =>
+                                    setValorMaximo(
+                                        event.target.value
+                                    )
+                                }
+                                placeholder="0,00"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="orders-filter-actions">
+                        {possuiFiltros && (
+                            <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={limparFiltros}
+                            >
+                                <X size={15} />
+
+                                Limpar
+                            </button>
+                        )}
+
+                        <button
+                            type="submit"
+                            className="button-primary"
+                            disabled={carregando}
+                        >
+                            <Search size={16} />
+
+                            Filtrar
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div className="content-card">
+                <div className="content-card-header">
+                    <div>
+                        <h2>
+                            Histórico de pedidos
+                        </h2>
+
+                        <p>
+                            {totalItens === 1
+                                ? "1 pedido encontrado"
+                                : `${totalItens} pedidos encontrados`}
+                        </p>
+                    </div>
+                </div>
+
+                {carregando ? (
+                    <div className="table-loading">
+                        <div className="spinner" />
+
+                        <span>
+                            Carregando pedidos...
+                        </span>
+                    </div>
+                ) : pedidos.length === 0 ? (
+                    <div className="empty-state">
+                        <div className="empty-state-icon">
+                            <ShoppingBag
+                                size={26}
+                            />
+                        </div>
+
+                        <h3>
+                            Nenhum pedido encontrado
+                        </h3>
+
+                        <p>
+                            Altere os filtros utilizados
+                            ou crie um novo pedido.
+                        </p>
+
+                        <Link
+                            href="/pedidos/novo"
+                            className="button-primary"
+                        >
+                            <Plus size={16} />
+
+                            Novo pedido
+                        </Link>
+                    </div>
+                ) : (
+                    <>
+                        <div className="table-responsive">
+                            <table className="data-table modern-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pedido</th>
+                                        <th>Data</th>
+                                        <th>Status</th>
+                                        <th>
+                                            Produtos
+                                        </th>
+                                        <th>
+                                            Desconto
+                                        </th>
+                                        <th>Total</th>
+                                        <th className="table-actions-column">
+                                            Ações
+                                        </th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    {pedidos.map(
+                                        (pedido) => (
+                                            <tr key={pedido.id}>
+                                                <td>
+                                                    <div className="order-number">
+                                                        <strong>
+                                                            #{pedido.id}
+                                                        </strong>
+                                                    </div>
+                                                </td>
+
+                                                <td className="table-muted">
+                                                    {formatarData(
+                                                        pedido.dataCriacao
+                                                    )}
+                                                </td>
+
+                                                <td>
+                                                    {statusPedido(
+                                                        pedido.status
+                                                    )}
+                                                </td>
+
+                                                <td className="table-money">
+                                                    {formatarMoeda(
+                                                        pedido.valorProdutos
+                                                    )}
+                                                </td>
+
+                                                <td>
+                                                    {pedido.desconto > 0 ? (
+                                                        <span className="discount-value">
+                                                            -
+                                                            {formatarMoeda(
+                                                                pedido.desconto
+                                                            )}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="table-muted">
+                                                            —
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                <td className="order-total">
+                                                    {formatarMoeda(
+                                                        pedido.valorTotal
+                                                    )}
+                                                </td>
+
+                                                <td className="table-actions-column">
+                                                    <Link
+                                                        href={`/pedidos/${pedido.id}`}
+                                                        className="table-action"
+                                                    >
+                                                        <Eye size={15} />
+
+                                                        Detalhes
+                                                    </Link>
+                                                </td>
+                                            </tr>
+                                        )
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="pagination-modern">
+                            <div className="pagination-info">
+                                Página{" "}
+                                <strong>
+                                    {pagina}
+                                </strong>
+                                {" de "}
+                                <strong>
+                                    {totalPaginas}
+                                </strong>
+                            </div>
+
+                            <div className="pagination-buttons">
+                                <button
+                                    type="button"
+                                    className="button-secondary pagination-button"
+                                    disabled={
+                                        pagina <= 1 ||
+                                        carregando
+                                    }
+                                    onClick={() =>
+                                        setPagina(
+                                            pagina - 1
+                                        )
+                                    }
+                                >
+                                    <ChevronLeft
+                                        size={16}
+                                    />
+
+                                    Anterior
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="button-secondary pagination-button"
+                                    disabled={
+                                        pagina >=
+                                        totalPaginas ||
+                                        carregando
+                                    }
+                                    onClick={() =>
+                                        setPagina(
+                                            pagina + 1
+                                        )
+                                    }
+                                >
+                                    Próxima
+
+                                    <ChevronRight
+                                        size={16}
+                                    />
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
+        </>
+    );
 }

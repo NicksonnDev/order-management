@@ -1,372 +1,678 @@
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import {
+    useEffect,
+    useState
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
+import {
+    ArrowLeft,
+    Check,
+    CheckCircle2,
+    Clock3,
+    PackageCheck,
+    Play,
+    ShoppingBag,
+    X,
+    XCircle
+} from "lucide-react";
 import { ApiError } from "@/services/api";
 import {
-  atualizarStatusPedido,
-  obterPedidoPorId
+    atualizarStatusPedido,
+    obterPedidoPorId
 } from "@/services/pedidosService";
 import {
-  Pedido,
-  StatusPedido
+    Pedido,
+    StatusPedido
 } from "@/types/pedido";
 
+import PageHeader from "@/components/ui/PageHeader";
+
 export default function PedidoDetalhesPage() {
-  const router = useRouter();
+    const router = useRouter();
 
-  const { id } = router.query;
+    const { id } = router.query;
 
-  const [pedido, setPedido] =
-    useState<Pedido | null>(null);
+    const [pedido, setPedido] =
+        useState<Pedido | null>(null);
 
-  const [carregando, setCarregando] =
-    useState(true);
+    const [carregando, setCarregando] =
+        useState(true);
 
-  const [alterandoStatus, setAlterandoStatus] =
-    useState(false);
+    const [atualizando, setAtualizando] =
+        useState(false);
 
-  const [erro, setErro] =
-    useState("");
+    const [erro, setErro] =
+        useState("");
 
-  useEffect(() => {
-    if (!router.isReady) {
-      return;
+    useEffect(() => {
+        if (!router.isReady) {
+            return;
+        }
+
+        const pedidoId = Number(id);
+
+        if (
+            !Number.isInteger(pedidoId) ||
+            pedidoId <= 0
+        ) {
+            return;
+        }
+
+        let cancelado = false;
+
+        obterPedidoPorId(pedidoId)
+            .then((resultado) => {
+                if (cancelado) {
+                    return;
+                }
+
+                setPedido(resultado);
+                setErro("");
+            })
+            .catch((error) => {
+                if (cancelado) {
+                    return;
+                }
+
+                if (error instanceof ApiError) {
+                    setErro(error.message);
+                } else {
+                    setErro(
+                        "Não foi possível carregar o pedido."
+                    );
+                }
+            })
+            .finally(() => {
+                if (!cancelado) {
+                    setCarregando(false);
+                }
+            });
+
+        return () => {
+            cancelado = true;
+        };
+    }, [
+        router.isReady,
+        id
+    ]);
+
+
+    async function alterarStatus(
+        novoStatus: StatusPedido
+    ) {
+        if (!pedido) {
+            return;
+        }
+
+        if (
+            novoStatus === StatusPedido.Cancelado
+        ) {
+            const confirmar =
+                window.confirm(
+                    "Deseja realmente cancelar este pedido? O estoque dos itens será devolvido."
+                );
+
+            if (!confirmar) {
+                return;
+            }
+        }
+
+        try {
+            setAtualizando(true);
+            setErro("");
+
+            const atualizado =
+                await atualizarStatusPedido(
+                    pedido.id,
+                    {
+                        status: novoStatus
+                    }
+                );
+
+            setPedido(
+                atualizado
+            );
+        } catch (error) {
+            if (error instanceof ApiError) {
+                setErro(
+                    error.message
+                );
+            } else {
+                setErro(
+                    "Não foi possível atualizar o status do pedido."
+                );
+            }
+        } finally {
+            setAtualizando(false);
+        }
     }
 
-    const pedidoId = Number(id);
-
-    if (!Number.isInteger(pedidoId) ||
-        pedidoId <= 0) {
-      setErro("Pedido inválido.");
-      setCarregando(false);
-
-      return;
-    }
-
-    carregarPedido(pedidoId);
-  }, [router.isReady, id]);
-
-  async function carregarPedido(
-    pedidoId: number
-  ) {
-    try {
-      setCarregando(true);
-      setErro("");
-
-      const resultado =
-        await obterPedidoPorId(pedidoId);
-
-      setPedido(resultado);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setErro(error.message);
-      } else {
-        setErro(
-          "Não foi possível carregar o pedido."
+    function formatarMoeda(
+        valor: number
+    ) {
+        return valor.toLocaleString(
+            "pt-BR",
+            {
+                style: "currency",
+                currency: "BRL"
+            }
         );
-      }
-    } finally {
-      setCarregando(false);
     }
-  }
 
-  async function alterarStatus(
-    novoStatus: StatusPedido
-  ) {
+    function formatarData(
+        data: string
+    ) {
+        return new Date(
+            data
+        ).toLocaleString(
+            "pt-BR"
+        );
+    }
+
+
+    function etapaAtiva(
+        etapa: StatusPedido
+    ) {
+        if (!pedido) {
+            return false;
+        }
+
+        if (
+            pedido.status === StatusPedido.Cancelado
+        ) {
+            return false;
+        }
+
+        return pedido.status === etapa;
+    }
+
+    function etapaConcluida(
+        etapa: StatusPedido
+    ) {
+        if (!pedido) {
+            return false;
+        }
+
+        if (
+            pedido.status === StatusPedido.Cancelado
+        ) {
+            return false;
+        }
+
+        if (
+            etapa === StatusPedido.Pendente
+        ) {
+            return (
+                pedido.status === StatusPedido.Processando ||
+                pedido.status === StatusPedido.Concluido
+            );
+        }
+
+        if (
+            etapa === StatusPedido.Processando
+        ) {
+            return (
+                pedido.status === StatusPedido.Concluido
+            );
+        }
+
+        return false;
+    }
+
+    const pedidoId =
+        Number(id);
+
+    const pedidoInvalido =
+        router.isReady &&
+        (
+            !Number.isInteger(pedidoId) ||
+            pedidoId <= 0
+        );
+
+    if (pedidoInvalido) {
+        return (
+            <>
+                <div className="alert-error">
+                    Pedido inválido.
+                </div>
+
+                <Link
+                    href="/pedidos"
+                    className="button-secondary"
+                >
+                    <ArrowLeft size={16} />
+
+                    Voltar
+                </Link>
+            </>
+        );
+    }
+
+    if (carregando) {
+        return (
+            <div className="page-loading">
+                <div className="spinner" />
+
+                <span>
+                    Carregando pedido...
+                </span>
+            </div>
+        );
+    }
+
+    if (erro && !pedido) {
+        return (
+            <>
+                <div className="alert-error">
+                    {erro}
+                </div>
+
+                <Link
+                    href="/pedidos"
+                    className="button-secondary"
+                >
+                    <ArrowLeft size={16} />
+
+                    Voltar
+                </Link>
+            </>
+        );
+    }
+
     if (!pedido) {
-      return;
+        return null;
     }
 
-    try {
-      setAlterandoStatus(true);
-      setErro("");
 
-      const pedidoAtualizado =
-        await atualizarStatusPedido(
-          pedido.id,
-          {
-            status: novoStatus
-          }
-        );
-
-      setPedido(pedidoAtualizado);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setErro(error.message);
-      } else {
-        setErro(
-          "Não foi possível alterar o status do pedido."
-        );
-      }
-    } finally {
-      setAlterandoStatus(false);
-    }
-  }
-
-function confirmarCancelamento() {
-  if (!pedido) {
-    return;
-  }
-
-  const confirmou = window.confirm(
-    "Deseja realmente cancelar este pedido? O estoque dos itens será devolvido."
-  );
-
-  if (!confirmou) {
-    return;
-  }
-
-  alterarStatus(
-    StatusPedido.Cancelado
-  );
-}
-
-  function descricaoStatus(
-    status: StatusPedido
-  ) {
-    switch (status) {
-      case StatusPedido.Pendente:
-        return "Pendente";
-
-      case StatusPedido.Processando:
-        return "Processando";
-
-      case StatusPedido.Concluido:
-        return "Concluído";
-
-      case StatusPedido.Cancelado:
-        return "Cancelado";
-
-      default:
-        return "Desconhecido";
-    }
-  }
-
-  function formatarMoeda(
-    valor: number
-  ) {
-    return valor.toLocaleString(
-      "pt-BR",
-      {
-        style: "currency",
-        currency: "BRL"
-      }
-    );
-  }
-
-  if (carregando) {
     return (
-      <p>
-        Carregando pedido...
-      </p>
-    );
-  }
+        <>
+            <PageHeader
+                title={`Pedido #${pedido.id}`}
+                description={`Criado em ${formatarData(
+                    pedido.dataCriacao
+                )}`}
+                actions={
+                    <Link
+                        href="/pedidos"
+                        className="button-secondary"
+                    >
+                        <ArrowLeft size={16} />
 
-  if (erro && !pedido) {
-    return (
-      <>
-        <div className="alert-error">
-          {erro}
-        </div>
+                        Voltar
+                    </Link>
+                }
+            />
 
-        <Link
-          href="/pedidos"
-          className="button-secondary"
-        >
-          Voltar
-        </Link>
-      </>
-    );
-  }
-
-  if (!pedido) {
-    return null;
-  }
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>
-            Pedido #{pedido.id}
-          </h1>
-
-          <p>
-            Criado em{" "}
-            {new Date(
-              pedido.dataCriacao
-            ).toLocaleString("pt-BR")}
-          </p>
-        </div>
-
-        <Link
-          href="/pedidos"
-          className="button-secondary"
-        >
-          Voltar
-        </Link>
-      </div>
-
-      {erro && (
-        <div className="alert-error">
-          {erro}
-        </div>
-      )}
-
-      <div className="detail-card">
-        <div className="detail-row">
-          <span>Status</span>
-
-          <strong>
-            {descricaoStatus(
-              pedido.status
+            {erro && (
+                <div className="alert-error">
+                    {erro}
+                </div>
             )}
-          </strong>
-        </div>
 
-        <div className="detail-row">
-          <span>Última atualização</span>
+            <section className="form-section-card order-flow-card">
+                <div className="form-section-header">
+                    <div>
+                        <h2>
+                            Andamento do pedido
+                        </h2>
 
-          <strong>
-            {new Date(
-              pedido.dataAtualizacao
-            ).toLocaleString("pt-BR")}
-          </strong>
-        </div>
-      </div>
+                        <p>
+                            Acompanhe a etapa atual do processamento.
+                        </p>
+                    </div>
+                </div>
 
-      <h2>Itens</h2>
+                <div className="form-section-body">
+                    {pedido.status ===
+                        StatusPedido.Cancelado ? (
+                        <div className="order-cancelled-state">
+                            <div className="order-cancelled-icon">
+                                <XCircle size={24} />
+                            </div>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Produto</th>
-            <th>Quantidade</th>
-            <th>Preço unitário</th>
-            <th>Total</th>
-          </tr>
-        </thead>
+                            <div>
+                                <strong>
+                                    Pedido cancelado
+                                </strong>
 
-        <tbody>
-          {pedido.itens.map((item) => (
-            <tr key={item.id}>
-              <td>
-                {item.produtoNome}
-              </td>
+                                <p>
+                                    Este pedido foi cancelado e não
+                                    possui novas ações disponíveis.
+                                    O estoque reservado foi devolvido.
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="order-timeline">
+                            <div
+                                className={
+                                    etapaAtiva(
+                                        StatusPedido.Pendente
+                                    )
+                                        ? "timeline-step active"
+                                        : etapaConcluida(
+                                            StatusPedido.Pendente
+                                        )
+                                            ? "timeline-step completed"
+                                            : "timeline-step"
+                                }
+                            >
+                                <div className="timeline-marker">
+                                    {etapaConcluida(
+                                        StatusPedido.Pendente
+                                    ) ? (
+                                        <Check size={16} />
+                                    ) : (
+                                        <Clock3 size={16} />
+                                    )}
+                                </div>
 
-              <td>
-                {item.quantidade}
-              </td>
+                                <div>
+                                    <strong>
+                                        Pendente
+                                    </strong>
 
-              <td>
-                {formatarMoeda(
-                  item.precoUnitario
+                                    <span>
+                                        Pedido criado
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="timeline-line" />
+
+                            <div
+                                className={
+                                    etapaAtiva(
+                                        StatusPedido.Processando
+                                    )
+                                        ? "timeline-step active"
+                                        : etapaConcluida(
+                                            StatusPedido.Processando
+                                        )
+                                            ? "timeline-step completed"
+                                            : "timeline-step"
+                                }
+                            >
+                                <div className="timeline-marker">
+                                    {etapaConcluida(
+                                        StatusPedido.Processando
+                                    ) ? (
+                                        <Check size={16} />
+                                    ) : (
+                                        <Play size={16} />
+                                    )}
+                                </div>
+
+                                <div>
+                                    <strong>
+                                        Processando
+                                    </strong>
+
+                                    <span>
+                                        Em processamento
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="timeline-line" />
+
+                            <div
+                                className={
+                                    etapaAtiva(
+                                        StatusPedido.Concluido
+                                    )
+                                        ? "timeline-step active"
+                                        : "timeline-step"
+                                }
+                            >
+                                <div className="timeline-marker">
+                                    <CheckCircle2 size={16} />
+                                </div>
+
+                                <div>
+                                    <strong>
+                                        Concluído
+                                    </strong>
+
+                                    <span>
+                                        Pedido finalizado
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </section>
+
+            <div className="order-details-grid">
+                <section className="form-section-card">
+                    <div className="form-section-header">
+                        <div className="form-section-icon">
+                            <ShoppingBag size={19} />
+                        </div>
+
+                        <div>
+                            <h2>
+                                Itens do pedido
+                            </h2>
+
+                            <p>
+                                Produtos e valores registrados
+                                no momento da compra.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="order-items-table-wrapper">
+                        <table className="modern-table order-items-table">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        Produto
+                                    </th>
+
+                                    <th>
+                                        Quantidade
+                                    </th>
+
+                                    <th>
+                                        Preço unitário
+                                    </th>
+
+                                    <th>
+                                        Total
+                                    </th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {pedido.itens.map(
+                                    (item) => (
+                                        <tr key={item.id}>
+                                            <td>
+                                                <div className="order-product-cell">
+                                                    <div className="product-avatar">
+                                                        {item.produtoNome
+                                                            .charAt(0)
+                                                            .toUpperCase()}
+                                                    </div>
+
+                                                    <div>
+                                                        <strong>
+                                                            {item.produtoNome}
+                                                        </strong>
+
+                                                        <span>
+                                                            Produto #{item.produtoId}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td>
+                                                {item.quantidade}
+                                                {" un."}
+                                            </td>
+
+                                            <td className="table-money">
+                                                {formatarMoeda(
+                                                    item.precoUnitario
+                                                )}
+                                            </td>
+
+                                            <td className="table-money">
+                                                {formatarMoeda(
+                                                    item.valorTotal
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <aside className="order-summary-card">
+                    <div className="order-summary-header">
+                        <div>
+                            <h2>
+                                Resumo financeiro
+                            </h2>
+
+                            <p>
+                                Valores calculados pelo sistema.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="order-summary-body">
+                        <div className="summary-row">
+                            <span>
+                                Produtos
+                            </span>
+
+                            <strong>
+                                {formatarMoeda(
+                                    pedido.valorProdutos
+                                )}
+                            </strong>
+                        </div>
+
+                        <div className="summary-row">
+                            <span>
+                                Desconto
+                            </span>
+
+                            {pedido.desconto > 0 ? (
+                                <strong className="summary-discount">
+                                    -
+                                    {formatarMoeda(
+                                        pedido.desconto
+                                    )}
+                                </strong>
+                            ) : (
+                                <strong>
+                                    {formatarMoeda(0)}
+                                </strong>
+                            )}
+                        </div>
+
+                        <div className="summary-divider" />
+
+                        <div className="summary-row summary-total">
+                            <span>
+                                Total
+                            </span>
+
+                            <strong>
+                                {formatarMoeda(
+                                    pedido.valorTotal
+                                )}
+                            </strong>
+                        </div>
+
+                        <div className="summary-note">
+                            Os valores e preços dos produtos
+                            representam o momento em que o
+                            pedido foi criado.
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            {(pedido.status === StatusPedido.Pendente ||
+                pedido.status === StatusPedido.Processando) && (
+                    <section className="order-actions-card">
+                        <div className="order-actions-info">
+                            <strong>
+                                Ações do pedido
+                            </strong>
+
+                            <span>
+                                Apenas transições válidas estão
+                                disponíveis para o status atual.
+                            </span>
+                        </div>
+
+                        <div className="order-actions-buttons">
+                            <button
+                                type="button"
+                                className="button-danger"
+                                disabled={atualizando}
+                                onClick={() =>
+                                    alterarStatus(
+                                        StatusPedido.Cancelado
+                                    )
+                                }
+                            >
+                                <X size={16} />
+
+                                Cancelar pedido
+                            </button>
+
+                            {pedido.status ===
+                                StatusPedido.Pendente && (
+                                    <button
+                                        type="button"
+                                        className="button-primary"
+                                        disabled={atualizando}
+                                        onClick={() =>
+                                            alterarStatus(
+                                                StatusPedido.Processando
+                                            )
+                                        }
+                                    >
+                                        <Play size={16} />
+
+                                        {atualizando
+                                            ? "Atualizando..."
+                                            : "Iniciar processamento"}
+                                    </button>
+                                )}
+
+                            {pedido.status ===
+                                StatusPedido.Processando && (
+                                    <button
+                                        type="button"
+                                        className="button-primary"
+                                        disabled={atualizando}
+                                        onClick={() =>
+                                            alterarStatus(
+                                                StatusPedido.Concluido
+                                            )
+                                        }
+                                    >
+                                        <PackageCheck size={16} />
+
+                                        {atualizando
+                                            ? "Atualizando..."
+                                            : "Concluir pedido"}
+                                    </button>
+                                )}
+                        </div>
+                    </section>
                 )}
-              </td>
-
-              <td>
-                {formatarMoeda(
-                  item.valorTotal
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="totals-card">
-        <div>
-          <span>
-            Valor dos produtos
-          </span>
-
-          <strong>
-            {formatarMoeda(
-              pedido.valorProdutos
-            )}
-          </strong>
-        </div>
-
-        <div>
-          <span>
-            Desconto
-          </span>
-
-          <strong>
-            {formatarMoeda(
-              pedido.desconto
-            )}
-          </strong>
-        </div>
-
-        <div className="total-final">
-          <span>
-            Total
-          </span>
-
-          <strong>
-            {formatarMoeda(
-              pedido.valorTotal
-            )}
-          </strong>
-        </div>
-      </div>
-
-
-
-      <div className="status-actions">
-        {pedido.status === StatusPedido.Pendente && (
-          <>
-            <button
-              type="button"
-              className="button-primary"
-              disabled={alterandoStatus}
-              onClick={() =>
-                alterarStatus(
-                  StatusPedido.Processando
-                )
-              }
-            >
-              Processar Pedido
-            </button>
-
-            <button
-              type="button"
-              className="button-danger"
-              disabled={alterandoStatus}
-              onClick={confirmarCancelamento}
-            >
-              Cancelar Pedido
-            </button>
-          </>
-        )}
-
-       {pedido.status === StatusPedido.Processando && (
-          <>
-            <button
-              type="button"
-              className="button-primary"
-              disabled={alterandoStatus}
-              onClick={() =>
-                alterarStatus(
-                  StatusPedido.Concluido
-                )
-              }
-            >
-              Concluir Pedido
-            </button>
-
-            <button
-              type="button"
-              className="button-danger"
-              disabled={alterandoStatus}
-              onClick={confirmarCancelamento}
-            >
-              Cancelar Pedido
-            </button>
-          </>
-        )}
-      </div>
-    </>
-  );
+        </>
+    );
 }
